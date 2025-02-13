@@ -1,0 +1,18 @@
+*.onnx
+.venv
+.env
+.idea/
+base64
+images
+fonts
+output_images
+
+
+# Python cache
+__pycache__/
+**/__pycache__/
+
+# Bytecode files
+*.pyc
+*.pyo
+*.pyd
