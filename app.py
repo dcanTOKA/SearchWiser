@@ -8,13 +8,10 @@ from streamlit_authenticator import LoginError
 import json
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 from search import AgentManager
-from util_config import create_yaml_from_secrets
 import os
 
 try:
-    create_yaml_from_secrets()
-    with open("./config.yaml") as file:
-        config = yaml.load(file, Loader=SafeLoader)
+    config = st.secrets.to_dict()
 except Exception as e:
     st.error(f"Error loading config file: {e}")
     st.stop()
