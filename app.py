@@ -12,7 +12,7 @@ from util_config import create_yaml_from_secrets
 import os
 
 try:
-    create_yaml_from_secrets()
+    # create_yaml_from_secrets()
     with open("./config.yaml") as file:
         config = yaml.load(file, Loader=SafeLoader)
 except Exception as e:
@@ -73,29 +73,25 @@ if st.session_state.get("authentication_status"):
         with st.sidebar:
             st.header("💬 Chat History")
 
-            # Arama kutusu ekleniyor.
             search_query = st.text_input("Search Chats", key="chat_search")
 
-            # Chat listesini, arama sorgusuna göre filtreleyerek gösteriyoruz.
             for i, chat in enumerate(st.session_state.chats):
                 if search_query and search_query.lower() not in chat["prompt"].lower():
                     continue
 
-                cols = st.columns([3, 1])  # Butonların yerleşimi için iki kolon oluşturuluyor.
+                cols = st.columns([3, 1])
                 with cols[0]:
                     display_text = chat["prompt"] if len(chat["prompt"]) <= 20 else chat["prompt"][:20] + "..."
                     if st.button(display_text, key=f"chat_{i}"):
                         st.session_state.current_chat = chat
                 with cols[1]:
                     if st.button("🗑️", key=f"delete_{i}"):
-                        # Chat'i session state'den sil
                         st.session_state.chats.pop(i)
-                        # chat_history.json dosyasını güncelle
                         with open("chat_history.json", "w") as f:
                             json.dump(st.session_state.chats, f)
                         if st.session_state.get("current_chat") == chat:
                             st.session_state.current_chat = None
-                        st.rerun()
+                        # st.rerun()
 
             if st.button("New Chat", key="new_chat"):
                 st.session_state.current_chat = None
