@@ -12,7 +12,7 @@ from util_config import create_yaml_from_secrets
 import os
 
 try:
-    # create_yaml_from_secrets()
+    create_yaml_from_secrets()
     with open("./config.yaml") as file:
         config = yaml.load(file, Loader=SafeLoader)
 except Exception as e:
