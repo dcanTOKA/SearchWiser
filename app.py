@@ -9,6 +9,7 @@ from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 from search import AgentManager
 from util_config import create_yaml_from_secrets
 import os
+import re
 
 cookie_controller = CookieController()
 
@@ -43,13 +44,18 @@ except LoginError as e:
     st.error(e)
 
 if st.session_state.get("authentication_status"):
-    cookie_controller.set(config["cookie"]["name"], st.session_state["username"])
+    user_full_name = config["credentials"]["usernames"].get(
+        st.session_state["username"], {}
+    ).get("name", st.session_state["username"])
 
-    if st.sidebar.button("Logout"):
+    cols = st.sidebar.columns([3, 1])
+    cols[0].write(f"**{user_full_name}**")
+    if cols[1].button("Logout"):
         authenticator.logout(location="sidebar", key="logout-demo-app-home")
         cookie_controller.remove(config["cookie"]["name"])
         st.session_state["authentication_status"] = None
         st.session_state["username"] = None
+        st.rerun()
 
 elif st.session_state.get("authentication_status") is False:
     st.error("Username/password is incorrect")
@@ -57,6 +63,19 @@ elif st.session_state.get("authentication_status") is None:
     st.warning("Please enter your username and password")
 
 if st.session_state.get("authentication_status"):
+
+    cookie_controller.set(config["cookie"]["name"], st.session_state["username"])
+
+    def sanitize_filename(name):
+        return re.sub(r"\W+", "_", name)
+
+    user_full_name = config["credentials"]["usernames"].get(
+        st.session_state["username"], {}
+    ).get("name", st.session_state["username"])
+    chats_dir = "chats"
+    if not os.path.exists(chats_dir):
+        os.makedirs(chats_dir)
+    chat_file = os.path.join(chats_dir, f"chats_{sanitize_filename(user_full_name)}.json")
 
     def format_summary(response_data):
         if isinstance(response_data, dict):
@@ -71,7 +90,6 @@ if st.session_state.get("authentication_status"):
             return str(response_data)
         return f"### 📌 Summary\n\n{summary}"
 
-
     def main():
         st.markdown("<h1 style='margin-top: -100px;'>Deep-Search-Wiser</h1>", unsafe_allow_html=True)
         st.write('Ask questions about recent events.')
@@ -80,9 +98,9 @@ if st.session_state.get("authentication_status"):
             st.session_state.agent_manager = AgentManager()
 
         if "chats" not in st.session_state:
-            if os.path.exists("chat_history.json"):
+            if os.path.exists(chat_file):
                 try:
-                    with open("chat_history.json", "r") as f:
+                    with open(chat_file, "r") as f:
                         st.session_state.chats = json.load(f)
                     if not isinstance(st.session_state.chats, list):
                         st.session_state.chats = []
@@ -108,11 +126,11 @@ if st.session_state.get("authentication_status"):
                 with cols[1]:
                     if st.button("🗑️", key=f"delete_{i}"):
                         st.session_state.chats.pop(i)
-                        with open("chat_history.json", "w") as f:
+                        with open(chat_file, "w") as f:
                             json.dump(st.session_state.chats, f)
                         if st.session_state.get("current_chat") == chat:
                             st.session_state.current_chat = None
-                        # st.rerun()
+                        # st.experimental_rerun()  # Uncomment if you wish to immediately refresh the app
 
             if st.button("New Chat", key="new_chat"):
                 st.session_state.current_chat = None
@@ -133,7 +151,7 @@ if st.session_state.get("authentication_status"):
                 )
                 st.markdown(format_summary(response_text), unsafe_allow_html=True)
             st.session_state.chats.append({"prompt": user_input, "response": response_text})
-            with open("chat_history.json", "w") as f:
+            with open(chat_file, "w") as f:
                 json.dump(st.session_state.chats, f)
 
     main()
