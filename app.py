@@ -1,6 +1,5 @@
 import streamlit as st
-
-st.set_page_config(page_title="AgentManager Chat", layout="wide")
+from streamlit_cookies_controller import CookieController
 import yaml
 from yaml.loader import SafeLoader
 import streamlit_authenticator as stauth
@@ -8,10 +7,15 @@ from streamlit_authenticator import LoginError
 import json
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
 from search import AgentManager
+from util_config import create_yaml_from_secrets
 import os
 
+cookie_controller = CookieController()
+
 try:
-    config = st.secrets.to_dict()
+    create_yaml_from_secrets()
+    with open("./config.yaml") as file:
+        config = yaml.load(file, Loader=SafeLoader)
 except Exception as e:
     st.error(f"Error loading config file: {e}")
     st.stop()
@@ -23,13 +27,29 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=config["cookie"]["expiry_days"],
 )
 
+auth_cookie = cookie_controller.get(config["cookie"]["name"])
+
+if auth_cookie:
+    st.session_state["authentication_status"] = True
+    st.session_state["username"] = auth_cookie
+else:
+    st.session_state["authentication_status"] = None
+
 try:
     authenticator.login(location="sidebar", key="login-demo-app-home")
 except LoginError as e:
     st.error(e)
 
 if st.session_state.get("authentication_status"):
+    cookie_controller.set(config["cookie"]["name"], st.session_state["username"])
+
     authenticator.logout(location="sidebar", key="logout-demo-app-home")
+
+    if st.button("Clear Cookies"):
+        cookie_controller.remove(config["cookie"]["name"])
+        st.session_state["authentication_status"] = None
+        st.rerun()
+
 elif st.session_state.get("authentication_status") is False:
     st.error("Username/password is incorrect")
 elif st.session_state.get("authentication_status") is None:
@@ -50,11 +70,12 @@ if st.session_state.get("authentication_status"):
             return str(response_data)
         return f"### 📌 Summary\n\n{summary}"
 
-
     def main():
         st.title("Deep-Search-Wiser")
+
         if "agent_manager" not in st.session_state:
             st.session_state.agent_manager = AgentManager()
+
         if "chats" not in st.session_state:
             if os.path.exists("chat_history.json"):
                 try:
@@ -111,6 +132,5 @@ if st.session_state.get("authentication_status"):
             st.session_state.chats.append({"prompt": user_input, "response": response_text})
             with open("chat_history.json", "w") as f:
                 json.dump(st.session_state.chats, f)
-
 
     main()

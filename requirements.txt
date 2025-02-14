@@ -1,9 +1,9 @@
-duckduckgo_search==7.3.2
 langchain==0.3.18
 langchain_community==0.3.17
 langchain_core==0.3.35
 langchain_openai==0.3.5
 python-dotenv==1.0.1
+PyYAML==6.0.2
 PyYAML==6.0.2
 streamlit==1.42.0
 streamlit_authenticator==0.4.1
