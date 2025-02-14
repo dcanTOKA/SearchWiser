@@ -1,14 +1,11 @@
 import json
 import os
-
 from dotenv import load_dotenv
 from duckduckgo_search import DDGS
-
 from langchain import hub
 from langchain.agents import create_react_agent, AgentExecutor, Tool
-from langchain.prompts import PromptTemplate
-from langchain_community.chat_models import ChatOpenAI
-
+from langchain_core.prompts import PromptTemplate
+from langchain_openai import ChatOpenAI
 
 load_dotenv()
 
@@ -17,165 +14,133 @@ class DuckDuckGoSearch:
     def __init__(self):
         self.ddgs = DDGS()
 
-    def search(self, query: str, max_results: int = 5) -> str:
-        results = self.ddgs.text(query, max_results=max_results)
-        parsed_results = []
-        for item in results:
-            title = item.get("title", "")
-            snippet = (
-                item.get("body")
-                or item.get("snippet")
-                or item.get("description")
-                or ""
-            )
-            href = item.get("href", "")
-
-            parsed_results.append({
-                "title": title,
-                "href": href,
-                "snippet": snippet
-            })
-        return json.dumps(parsed_results, ensure_ascii=False)
+    def search(self, query: str, max_results: int = 15):
+        try:
+            results = self.ddgs.text(query, max_results=max_results)
+            parsed_results = [
+                {
+                    "title": item.get("title", ""),
+                    "href": item.get("href", ""),
+                    "snippet": item.get("body", "")
+                }
+                for item in results
+            ]
+            return {"status": "completed", "results": parsed_results}
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
 
 
 class NegativeFilter:
-    def __init__(self):
-        self.negative_keywords = [
-            "vefat", "ceza", "dava", "haciz", "usulsüzlük", "baskın",
-            "tutuklama", "soruşturma", "mühürlendi", "yangın", "iflas",
-            "dolandırıcılık", "fetö", "işçi kıyımı", "yolsuzluk",
-            "hapis cezası", "para cezası", "ihaleye fesat karıştırma",
-            "operasyon", "mafya", "kara para aklama", "patlama", "soruşturma"
-        ]
-        self.llm = ChatOpenAI(
-            temperature=0.0,
-            model_name="gpt-4o-mini",
-            openai_api_key=os.environ.get("OPENAI_API_KEY"),
-        )
+    NEGATIVE_KEYWORDS = [
+        "vefat", "ceza", "dava", "haciz", "usulsüzlük", "baskın",
+        "tutuklama", "soruşturma", "mühürlendi", "yangın", "iflas",
+        "dolandırıcılık", "fetö", "işçi kıyımı", "yolsuzluk",
+        "hapis cezası", "para cezası", "ihaleye fesat karıştırma",
+        "operasyon", "mafya", "kara para aklama", "patlama"
+    ]
+
+    def __init__(self, llm: ChatOpenAI):
+        self.llm = llm
 
     @staticmethod
-    def _build_negative_filter_prompt() -> PromptTemplate:
+    def _create_negative_filter_prompt() -> PromptTemplate:
         template = """
-Aşağıda DuckDuckGo'dan elde edilen bazı haber sonuçları var (JSON formatında):
-{search_results_json}
+    Aşağıda DuckDuckGo'dan elde edilen bazı haber sonuçları var (JSON formatında):
+    {search_results_json}
 
-Negatif anahtar kelimeler: {{neg_keywords}}
+    Aranan terim: "{search_query}"
 
-Görev:
-1. Her bir sonuçtaki "title", "snippet" ve "href" alanlarını kontrol et.
-2. Aşağıdaki negatif kelimelerden (veya benzer semantik ifade) herhangi biri geçiyorsa, o haberi negatif olarak işaretle.
-3. Bulduğun haberleri yalnızca şu JSON formatında döndür (dışında bir şey ekleme):
-[
-  {{
-    "title": "...",
-    "href": "...",
-    "snippet": "...",
-    "keywords_found": ["..."],
-    "reason": "kısa açıklama"
-  }}
-]
+    Negatif anahtar kelimeler: {neg_keywords}
 
-Eğer hiçbir negatif içerik yoksa boş bir liste [] döndür.
-Sadece geçerli JSON döndür; başka açıklama veya "Thought" ekleme.
-"""
-        return PromptTemplate(
-            template=template,
-            input_variables=["search_results_json"]
-        )
+    Görev:
+    1. Her bir sonucu (title, href, snippet) incele.
+    2. Eğer hem "{search_query}" ifadesiyle doğrudan ilişkiliyse **ve** aşağıdaki negatif kelimelerden (veya benzer semantik ifadelerden) biri geçiyorsa, o haberi negatif olarak işaretle.
+    3. Bulduğun negatif haberleri tek bir Markdown metninde sırayla döndür:
+       - **Title**: ...
+       - **URL**: ...
+       - **Snippet**: ...
+       - **Keywords Found**: ...
+       - **Reason**: (Bu haber neden negatif olarak işaretlendi?)  
+
+    4. Eğer hiçbir negatif içerik yoksa sadece `"No negative content found."` döndür.
+    5. Haberlerin gerçekten aranan terimle ilgili olup olmadığına özellikle dikkat et. **Eğer sadece negatif kelime geçiyorsa ama haber doğrudan "{search_query}" ile ilgili değilse, bu haberi dahil etme.**  
+    6. Markdown formatı dışında başka açıklama veya "Thought" ekleme.
+    """
+        return PromptTemplate(template=template,
+                              input_variables=["search_results_json", "neg_keywords", "search_query"])
 
     def filter_negative_news(self, search_results_json: str) -> str:
-        prompt_template = self._build_negative_filter_prompt()
-        prompt_filled = prompt_template.format(
-            search_results_json=search_results_json
-        ).replace("{{neg_keywords}}", str(self.negative_keywords))
-
-        response = self.llm.invoke(prompt_filled)
-        return response
+        try:
+            prompt_template = self._create_negative_filter_prompt()
+            neg_keywords_json = json.dumps(self.NEGATIVE_KEYWORDS, ensure_ascii=False)
+            prompt_filled = prompt_template.format(
+                search_results_json=search_results_json,
+                neg_keywords=neg_keywords_json
+            )
+            response = self.llm.invoke(prompt_filled)
+            return response.content.strip()
+        except Exception as e:
+            return f"Error during filtering: {str(e)}"
 
 
 class SummarizeNegativeNews:
-    def __init__(self):
-        self.llm = ChatOpenAI(
-            temperature=0.2,  # Özetleme için hafif yaratıcılık
-            model_name="gpt-4o-mini",
-            openai_api_key=os.environ.get("OPENAI_API_KEY"),
-        )
+    def __init__(self, llm: ChatOpenAI):
+        self.llm = llm
 
-    def summarize(self, negative_json_str: str) -> str:
-        prompt = f"""
-Aşağıda negatif haberlerin JSON formatında bir listesi bulunuyor:
-{negative_json_str}
+    def summarize(self, negative_news_markdown: str) -> str:
+        try:
+            prompt = f"""
+Aşağıda negatif haberlerin listesi (Markdown formatında) bulunuyor:
+{negative_news_markdown}
 
-Lütfen bu haberleri kısa ve öz bir şekilde özetle.
-- Her haberi madde işaretiyle göster.
-- 'title' ve 'reason' kısımlarını kullan.
-- Kısa, insan tarafından okunabilir bir metin döndür.
+Görev:
+1. Bu haberleri kısa ve öz bir şekilde özetle.
+2. Negatif haber yoksa "No negative content found." metnini yaz.
+3. Markdown dışı açıklama ekleme.
 """
-        response = self.llm.invoke(prompt)
-        return response
+            response = self.llm.invoke(prompt)
+            return response.content.strip()
+        except Exception as e:
+            return f"Error during summarization: {str(e)}"
 
 
 class AgentManager:
     def __init__(self):
-        self.search_instance = DuckDuckGoSearch()
-        self.filter_instance = NegativeFilter()
-        self.summarize_tool = SummarizeNegativeNews()
-
-        # Ajanın temel LLM'i
         self.llm = ChatOpenAI(
-            temperature=0.7,
+            temperature=0.0,
             model_name="gpt-4o-mini",
             openai_api_key=os.environ.get("OPENAI_API_KEY"),
+            streaming=True
         )
-
-        self.tools_for_agent = self._initialize_tools()
-
-    def _initialize_tools(self) -> list:
-        return [
+        self.search_instance = DuckDuckGoSearch()
+        self.filter_instance = NegativeFilter(self.llm)
+        self.summarize_instance = SummarizeNegativeNews(self.llm)
+        self.tools_for_agent = [
             Tool(
                 name="DuckDuckGoSearch",
-                func=lambda query: self.search_instance.search(query),
-                description="DuckDuckGo'da arama yapar, sonuçları JSON formatında döndürür."
+                func=self.search_instance.search,
+                description="DuckDuckGo'da arama yapar ve sonuçları döndürür."
             ),
             Tool(
                 name="NegativeFilter",
-                func=lambda search_results: self.filter_instance.filter_negative_news(search_results),
-                description="Arama sonuçlarından negatif haberleri filtreler ve JSON formatında döndürür."
+                func=self.filter_instance.filter_negative_news,
+                description="Arama sonuçlarından negatif haberleri filtreler (Markdown formatında)."
             ),
             Tool(
                 name="SummarizeNegativeNews",
-                func=lambda negative_json_str: self.summarize_tool.summarize(negative_json_str),
-                description="NegativeFilter tarafından dönen JSON'u özetler, daha okunabilir bir formatta Türkçe dilinde çıktı verir."
+                func=self.summarize_instance.summarize,
+                description="Negatif haberleri kısa ve anlaşılır bir şekilde özetler."
             ),
         ]
-
-    def execute(self, prompt_input: str) -> str:
         react_prompt = hub.pull("hwchase17/react")
+        self.agent = create_react_agent(llm=self.llm, tools=self.tools_for_agent, prompt=react_prompt)
+        self.agent_executor = AgentExecutor(agent=self.agent, tools=self.tools_for_agent, verbose=True)
 
-        agent = create_react_agent(
-            llm=self.llm,
-            tools=self.tools_for_agent,
-            prompt=react_prompt
-        )
-
-        agent_executor = AgentExecutor(
-            agent=agent,
-            tools=self.tools_for_agent,
-            verbose=True,
-            handle_parsing_errors=True
-        )
-
-        result = agent_executor.invoke({"input": prompt_input})
-
-        final_answer = result.get("output", "")
-        return final_answer
-
-
-if __name__ == "__main__":
-    manager = AgentManager()
-    query_text = (
-        "DuckDuckGoSearch ile 'Ümit ÖZDAĞ' ile ilgili haberleri ara, "
-        "NegativeFilter ile olumsuz olanları ayıkla ve SummarizeNegativeNews aracıyla özetini bana sun."
-    )
-    response = manager.execute(query_text)
-    print("=== Nihai Yanıt (Final Answer) ===\n", response)
+    def execute(self, user_prompt: str, st_callback=None):
+        try:
+            if st_callback:
+                return self.agent_executor.invoke({"input": user_prompt}, {"callbacks": [st_callback]})
+            else:
+                return self.agent_executor.invoke({"input": user_prompt})
+        except Exception as e:
+            return f"Error during agent execution: {str(e)}"
