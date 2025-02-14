@@ -27,13 +27,15 @@ authenticator = stauth.Authenticate(
     cookie_expiry_days=config["cookie"]["expiry_days"],
 )
 
+if "authentication_status" not in st.session_state:
+    st.session_state["authentication_status"] = None
+    st.session_state["username"] = None
+
 auth_cookie = cookie_controller.get(config["cookie"]["name"])
 
-if auth_cookie:
+if auth_cookie and st.session_state["authentication_status"] is None:
     st.session_state["authentication_status"] = True
     st.session_state["username"] = auth_cookie
-else:
-    st.session_state["authentication_status"] = None
 
 try:
     authenticator.login(location="sidebar", key="login-demo-app-home")
@@ -43,12 +45,11 @@ except LoginError as e:
 if st.session_state.get("authentication_status"):
     cookie_controller.set(config["cookie"]["name"], st.session_state["username"])
 
-    authenticator.logout(location="sidebar", key="logout-demo-app-home")
-
-    if st.button("Clear Cookies"):
+    if st.sidebar.button("Logout"):
+        authenticator.logout(location="sidebar", key="logout-demo-app-home")
         cookie_controller.remove(config["cookie"]["name"])
         st.session_state["authentication_status"] = None
-        st.rerun()
+        st.session_state["username"] = None
 
 elif st.session_state.get("authentication_status") is False:
     st.error("Username/password is incorrect")
