@@ -1,7 +1,7 @@
 import json
 import os
 from dotenv import load_dotenv
-from langchain_community.tools import DuckDuckGoSearchRun
+from duckduckgo_search import DDGS
 from langchain import hub
 from langchain.agents import create_react_agent, AgentExecutor, Tool
 from langchain_core.prompts import PromptTemplate
@@ -9,7 +9,25 @@ from langchain_openai import ChatOpenAI
 
 load_dotenv()
 
-ddg_search = DuckDuckGoSearchRun()
+
+class DuckDuckGoSearch:
+    def __init__(self):
+        self.ddgs = DDGS()
+
+    def search(self, query: str, max_results: int = 15):
+        try:
+            results = self.ddgs.text(query, max_results=max_results)
+            parsed_results = [
+                {
+                    "title": item.get("title", ""),
+                    "href": item.get("href", ""),
+                    "snippet": item.get("body", "")
+                }
+                for item in results
+            ]
+            return {"status": "completed", "results": parsed_results}
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
 
 
 class NegativeFilter:
@@ -94,12 +112,13 @@ class AgentManager:
             openai_api_key=os.environ.get("OPENAI_API_KEY"),
             streaming=True
         )
+        self.search_instance = DuckDuckGoSearch()
         self.filter_instance = NegativeFilter(self.llm)
         self.summarize_instance = SummarizeNegativeNews(self.llm)
         self.tools_for_agent = [
             Tool(
                 name="DuckDuckGoSearch",
-                func=ddg_search.run,
+                func=self.search_instance.search,
                 description="DuckDuckGo'da arama yapar ve sonuçları döndürür."
             ),
             Tool(

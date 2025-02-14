@@ -91,7 +91,7 @@ if st.session_state.get("authentication_status"):
                             json.dump(st.session_state.chats, f)
                         if st.session_state.get("current_chat") == chat:
                             st.session_state.current_chat = None
-                        # st.rerun()
+                        st.rerun()
 
             if st.button("New Chat", key="new_chat"):
                 st.session_state.current_chat = None

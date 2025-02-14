@@ -13,8 +13,6 @@ def create_yaml_from_secrets():
             yaml.dump(secrets, yaml_file, default_flow_style=False)
 
         print(f"Config yaml:  {config_path} created!")
-    else:
-        print(f"Config yaml already exists!")
 
 
 create_yaml_from_secrets()
