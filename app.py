@@ -71,8 +71,10 @@ if st.session_state.get("authentication_status"):
             return str(response_data)
         return f"### 📌 Summary\n\n{summary}"
 
+
     def main():
-        st.title("Deep-Search-Wiser")
+        st.markdown("<h1 style='margin-top: -100px;'>Deep-Search-Wiser</h1>", unsafe_allow_html=True)
+        st.write('Ask questions about recent events.')
 
         if "agent_manager" not in st.session_state:
             st.session_state.agent_manager = AgentManager()
