@@ -53,6 +53,9 @@ if st.session_state.get("authentication_status"):
     if cols[1].button("Logout"):
         authenticator.logout(location="sidebar", key="logout-demo-app-home")
         cookie_controller.remove(config["cookie"]["name"])
+        for key in ["agent_manager", "chats", "current_chat"]:
+            if key in st.session_state:
+                del st.session_state[key]
         st.session_state["authentication_status"] = None
         st.session_state["username"] = None
         st.rerun()
